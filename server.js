@@ -48,11 +48,13 @@ mongoose
 const usersRouter = require("./routers/v1/usersRouter");
 const loginRouter = require("./routers/v1/loginRouter");
 const parcelRouter = require("./routers/v1/parcelRouter");
+const agentsRouter = require("./routers/v1/agentsRouter");
 
 
 app.use("/api/v1/users", usersRouter);
 app.use("/api/v1/login", loginRouter);
 app.use("/api/v1/parcel", parcelRouter);
+app.use("/api/v1/agents", agentsRouter);
 
 /*------------- Error Handling -------------*/
 app.use(notFoundHandler);

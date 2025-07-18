@@ -1,6 +1,8 @@
 const Parcel = require("../models/Parcel");
 const mongoose = require("mongoose");
 const parcelService = require("../services/parcelServices");
+const Agent = require("../models/Agent");
+const User = require("../models/User");
 
 // Create a new parcel booking (Customer)
 exports.createParcel = async (req, res) => {
@@ -18,12 +20,23 @@ exports.createParcel = async (req, res) => {
     } = req.body;
 
     // Basic validation (can be expanded)
-    if (!pickupAddress || !deliveryAddress || !parcelType || !parcelSize || !receiverName || !receiverPhone) {
-      return res.status(400).json({ message: "Please fill all required fields" });
+    if (
+      !pickupAddress ||
+      !deliveryAddress ||
+      !parcelType ||
+      !parcelSize ||
+      !receiverName ||
+      !receiverPhone
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Please fill all required fields" });
     }
 
     if (isCOD && (!amount || amount <= 0)) {
-      return res.status(400).json({ message: "Amount must be greater than 0 for COD parcels" });
+      return res
+        .status(400)
+        .json({ message: "Amount must be greater than 0 for COD parcels" });
     }
 
     const parcel = new Parcel({
@@ -40,7 +53,9 @@ exports.createParcel = async (req, res) => {
     });
 
     await parcel.save();
-    res.status(201).json({ success: true, message: "Parcel booking created", parcel });
+    res
+      .status(201)
+      .json({ success: true, message: "Parcel booking created", parcel });
   } catch (error) {
     console.error("Error creating parcel:", error);
     res.status(500).json({ message: "Server error" });
@@ -50,7 +65,20 @@ exports.createParcel = async (req, res) => {
 // Get all parcels (Admin)
 exports.getAllParcels = async (req, res) => {
   try {
-    const parcels = await Parcel.find().populate("userId assignedAgentId", "name email role");
+    const parcels = await Parcel.find().populate(
+      "userId assignedAgentId",
+      "name email role"
+    );
+    res.json(parcels);
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Get new parcels (Admin)
+exports.getNewParcels = async (req, res) => {
+  try {
+    const parcels = await Parcel.find({ status: "Pending" });
     res.json(parcels);
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -61,7 +89,10 @@ exports.getAllParcels = async (req, res) => {
 exports.getMyParcels = async (req, res) => {
   try {
     const userId = req.user.userId;
-    const parcels = await Parcel.find({ userId }).populate("assignedAgentId", "name email");
+    const parcels = await Parcel.find({ userId }).populate(
+      "assignedAgentId",
+      "name email"
+    );
     res.json(parcels);
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -72,7 +103,10 @@ exports.getMyParcels = async (req, res) => {
 exports.getAssignedParcels = async (req, res) => {
   try {
     const agentId = req.user._id;
-    const parcels = await Parcel.find({ assignedAgentId: agentId }).populate("userId", "name email");
+    const parcels = await Parcel.find({ assignedAgentId: agentId }).populate(
+      "userId",
+      "name email"
+    );
     res.json(parcels);
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -86,7 +120,10 @@ exports.getParcelById = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(parcelId)) {
       return res.status(400).json({ message: "Invalid parcel ID" });
     }
-    const parcel = await Parcel.findById(parcelId).populate("userId assignedAgentId", "name email role");
+    const parcel = await Parcel.findById(parcelId).populate(
+      "userId assignedAgentId",
+      "name email role"
+    );
     if (!parcel) {
       return res.status(404).json({ message: "Parcel not found" });
     }
@@ -114,7 +151,9 @@ exports.updateParcelStatus = async (req, res) => {
 
     // Optional: check if current user is assigned agent
     if (parcel.assignedAgentId?.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: "You are not assigned to this parcel" });
+      return res
+        .status(403)
+        .json({ message: "You are not assigned to this parcel" });
     }
 
     parcel.status = status;
@@ -131,7 +170,10 @@ exports.assignAgent = async (req, res) => {
     const parcelId = req.params.id;
     const { agentId } = req.body;
 
-    if (!mongoose.Types.ObjectId.isValid(parcelId) || !mongoose.Types.ObjectId.isValid(agentId)) {
+    if (
+      !mongoose.Types.ObjectId.isValid(parcelId) ||
+      !mongoose.Types.ObjectId.isValid(agentId)
+    ) {
       return res.status(400).json({ message: "Invalid parcel or agent ID" });
     }
 
@@ -151,6 +193,49 @@ exports.assignAgent = async (req, res) => {
     await parcel.save();
     res.json({ message: "Agent assigned successfully", parcel });
   } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Assign delivery agent to multiple parcels (Admin)
+exports.assignMultipleAgents = async (req, res) => {
+  try {
+    const { parcelIds, agentId } = req.body;
+    if (
+      !Array.isArray(parcelIds) ||
+      parcelIds.some((id) => !mongoose.Types.ObjectId.isValid(id)) ||
+      !mongoose.Types.ObjectId.isValid(agentId)
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Invalid parcel IDs or agent ID" });
+    }
+
+    // Check if agent is valid
+    const agent = await User.findOne({ _id: agentId, role: "deliveryAgent" });
+
+    if (!agent) {
+      return res.status(400).json({ message: "Invalid delivery agent" });
+    }
+
+    // Assign agent to each parcel
+    await Parcel.updateMany(
+      { _id: { $in: parcelIds } },
+      { $set: { assignedAgentId: agentId, status: "Assigned" } }
+    );
+
+    await Agent.updateOne(
+      { user: agentId },
+      { $addToSet: { currentParcels: { $each: parcelIds } } }
+    );
+
+    res.json({
+      success: true,
+      message: "Agent assigned to selected parcels successfully",
+      modifiedCount: result.modifiedCount,
+    });
+  } catch (error) {
+    console.error(error);
     res.status(500).json({ message: "Server error" });
   }
 };
@@ -181,7 +266,10 @@ exports.trackParcel = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(parcelId)) {
       return res.status(400).json({ message: "Invalid parcel ID" });
     }
-    const parcel = await Parcel.findById(parcelId, "trackingCoordinates status");
+    const parcel = await Parcel.findById(
+      parcelId,
+      "trackingCoordinates status"
+    );
     if (!parcel) {
       return res.status(404).json({ message: "Parcel not found" });
     }
@@ -201,7 +289,9 @@ exports.updateParcelLocation = async (req, res) => {
     const { lat, lng } = req.body;
 
     if (!lat || !lng) {
-      return res.status(400).json({ message: "Latitude and longitude required" });
+      return res
+        .status(400)
+        .json({ message: "Latitude and longitude required" });
     }
 
     if (!mongoose.Types.ObjectId.isValid(parcelId)) {
@@ -214,13 +304,18 @@ exports.updateParcelLocation = async (req, res) => {
     }
 
     if (parcel.assignedAgentId?.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: "You are not assigned to this parcel" });
+      return res
+        .status(403)
+        .json({ message: "You are not assigned to this parcel" });
     }
 
     parcel.trackingCoordinates.push({ lat, lng });
     await parcel.save();
 
-    res.json({ message: "Location updated", trackingCoordinates: parcel.trackingCoordinates });
+    res.json({
+      message: "Location updated",
+      trackingCoordinates: parcel.trackingCoordinates,
+    });
   } catch (error) {
     res.status(500).json({ message: "Server error" });
   }
@@ -232,7 +327,11 @@ exports.cancelParcel = async (req, res) => {
     const { reason } = req.body;
     const userId = req.user?.userId;
 
-    const parcel = await parcelService.cancelParcelByIdService(id, reason, userId);
+    const parcel = await parcelService.cancelParcelByIdService(
+      id,
+      reason,
+      userId
+    );
 
     res.status(200).json({
       success: true,

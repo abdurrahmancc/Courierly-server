@@ -9,6 +9,9 @@ const createError = require("http-errors");
 // internal imports
 const User = require("../models/User");
 const { getUserFromToken } = require("../middleWares/common/checkLogin");
+const userService = require("../services/userService");
+const Agent = require("../models/Agent");
+const mongoose = require("mongoose");
 
 // get all users (admin/moderator access)
 const getUsers = async ( req, res, next) => {
@@ -25,6 +28,16 @@ const getUserByEmail = async (req, res, next) => {
   try {
     const user = await User.findOne({ email: req.params.email });
     res.send({ user });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// get Delivery Agents (admin/moderator access)
+const getDeliveryAgents = async (req, res, next) => {
+  try {
+    const agents = await userService.getDeliveryAgentsService();
+    res.status(200).json({ agents });
   } catch (error) {
     next(error);
   }
@@ -102,22 +115,36 @@ const addUser = async (req, res, next) => {
 
 // change user role by admin
 const makeRole = async (req, res, next) => {
+  const session = await mongoose.startSession();
   try {
+    session.startTransaction();
+
     const { id } = req.params;
     const { role } = req.body;
-    const options = { new: true, useFindAndModify: false };
+    const options = { new: true, useFindAndModify: false, session };
 
     const updatedUser = await User.findByIdAndUpdate(id, { role }, options);
 
     if (!updatedUser) {
+      await session.abortTransaction();
       return next(createError(404, "User not found"));
     }
 
+    if(role == "deliveryAgent"){
+      const newAgent = new Agent({ user: id });
+      await newAgent.save({ session });
+    }
+
+    await session.commitTransaction();
     res.send({ result: updatedUser, message: "Role updated successfully" });
   } catch (error) {
+    await session.abortTransaction();
     next(createError(500, "Server error"));
+  } finally {
+    session.endSession();
   }
 };
+
 
 // delete user and remove avatar file if exists
 const removeUser = async (req, res, next) => {
@@ -219,6 +246,29 @@ const updatePermanentAddress = async (req, res, next) => {
   }
 };
 
+
+const updateUser = async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const updateData = req.body;
+
+    const updatedUser = await userService.updateUserService(userId, updateData);
+
+    const { password, confirmationToken, passwordResetToken, ...safeUser } = updatedUser.toObject();
+
+    res.json({
+      message: "User updated successfully",
+      user: safeUser,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getUsers,
   addUser,
@@ -233,4 +283,6 @@ module.exports = {
   updatePermanentAddress,
   getUserByEmail,
   getLoginUser,
+  updateUser,
+  getDeliveryAgents,
 };

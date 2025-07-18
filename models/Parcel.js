@@ -51,7 +51,7 @@ const ParcelSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ["Pending", "PickedUp", "InTransit", "Delivered", "Cancelled"],
+    enum: ["Pending", "PickedUp", "Assigned", "InTransit", "Delivered", "Cancelled"],
     default: "Pending"
   },
   cancelReason: {

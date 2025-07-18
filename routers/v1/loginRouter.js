@@ -7,7 +7,7 @@ const {
   isValidToken,
   isAdmin,
   googleUser,
-} = require("../../Controller/loginController");
+} = require("../../controller/loginController");
 const { verifyJWT, requireRole } = require("../../middleWares/common/checkLogin");
 
 const {

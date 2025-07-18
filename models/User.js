@@ -32,7 +32,10 @@ const userSchema = new mongoose.Schema(
       unique: true,
       sparse: true,
       default: undefined,
-      validate: [validator.isMobilePhone, "Please provide a valid phone number"],
+      validate: [
+        validator.isMobilePhone,
+        "Please provide a valid phone number",
+      ],
     },
     password: {
       type: String,
@@ -70,15 +73,7 @@ const userSchema = new mongoose.Schema(
     NID: { type: String, trim: true },
     dateOfBirth: { type: Date },
     postalCode: { type: String, trim: true },
-    drivingLicense: { type: String, trim: true },// Delivery Agent specific
-    vehicleInfo: {
-      type: {
-        vehicleType: String,
-        vehicleNumber: String,
-      },
-      default: undefined,
-    },
-
+    drivingLicense: { type: String, trim: true },
     status: {
       type: String,
       enum: ["active", "inactive"],
