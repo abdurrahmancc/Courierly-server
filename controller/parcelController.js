@@ -68,7 +68,18 @@ exports.getAllParcels = async (req, res) => {
     const parcels = await Parcel.find().populate(
       "userId assignedAgentId",
       "name email role"
-    );
+    ).sort("-createdAt");
+    res.json(parcels);
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Get all parcels By Status (delivaryAgent, Admin)
+exports.getDeliveredParcelsByStatus = async (req, res) => {
+  try {
+    const status = req.params.status;
+    const parcels = await Parcel.find({status}).sort("-createdAt");
     res.json(parcels);
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -78,7 +89,7 @@ exports.getAllParcels = async (req, res) => {
 // Get new parcels (Admin)
 exports.getNewParcels = async (req, res) => {
   try {
-    const parcels = await Parcel.find({ status: "Pending" });
+    const parcels = await Parcel.find({ isAssigned: false });
     res.json(parcels);
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -102,7 +113,7 @@ exports.getMyParcels = async (req, res) => {
 // Get parcels assigned to delivery agent
 exports.getAssignedParcels = async (req, res) => {
   try {
-    const agentId = req.user._id;
+    const agentId = req.user.userId;
     const parcels = await Parcel.find({ assignedAgentId: agentId }).populate(
       "userId",
       "name email"
@@ -140,7 +151,7 @@ exports.updateParcelStatus = async (req, res) => {
     const parcelId = req.params.id;
     const { status } = req.body;
 
-    if (!["PickedUp", "InTransit", "Delivered", "Cancelled"].includes(status)) {
+    if (!["PickedUp", "InTransit", "Delivered"].includes(status)) {
       return res.status(400).json({ message: "Invalid status value" });
     }
 
@@ -150,7 +161,7 @@ exports.updateParcelStatus = async (req, res) => {
     }
 
     // Optional: check if current user is assigned agent
-    if (parcel.assignedAgentId?.toString() !== req.user._id.toString()) {
+    if (parcel.assignedAgentId?.toString() !== req.user.userId.toString()) {
       return res
         .status(403)
         .json({ message: "You are not assigned to this parcel" });
@@ -158,7 +169,7 @@ exports.updateParcelStatus = async (req, res) => {
 
     parcel.status = status;
     await parcel.save();
-    res.json({ message: "Parcel status updated", parcel });
+    res.json({ success: true, message: "Parcel status updated", parcel });
   } catch (error) {
     res.status(500).json({ message: "Server error" });
   }
@@ -219,15 +230,16 @@ exports.assignMultipleAgents = async (req, res) => {
     }
 
     // Assign agent to each parcel
-    await Parcel.updateMany(
+   const result = await Parcel.updateMany(
       { _id: { $in: parcelIds } },
-      { $set: { assignedAgentId: agentId, status: "Assigned" } }
+      { $set: { assignedAgentId: agentId, isAssigned: true } }
     );
 
     await Agent.updateOne(
       { user: agentId },
       { $addToSet: { currentParcels: { $each: parcelIds } } }
     );
+    
 
     res.json({
       success: true,
@@ -320,6 +332,8 @@ exports.updateParcelLocation = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
+
 
 exports.cancelParcel = async (req, res) => {
   try {

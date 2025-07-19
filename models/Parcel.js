@@ -4,31 +4,31 @@ const ParcelSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
-    required: true
+    required: true,
   },
   pickupAddress: {
     type: String,
     required: true,
-    trim: true
+    trim: true,
   },
   deliveryAddress: {
     type: String,
     required: true,
-    trim: true
+    trim: true,
   },
   parcelType: {
     type: String,
     enum: ["Envelope", "Box", "Fragile", "Other"],
-    required: true
+    required: true,
   },
   parcelSize: {
     type: String,
     enum: ["Small", "Medium", "Large"],
-    required: true
+    required: true,
   },
   isCOD: {
     type: Boolean,
-    default: false
+    default: false,
   },
   amount: {
     type: Number,
@@ -37,56 +37,60 @@ const ParcelSchema = new mongoose.Schema({
       validator: function (value) {
         return !this.isCOD || (this.isCOD && value > 0);
       },
-      message: "COD amount must be greater than 0"
-    }
+      message: "COD amount must be greater than 0",
+    },
   },
   receiverName: {
     type: String,
     required: true,
-    trim: true
+    trim: true,
   },
   receiverPhone: {
     type: String,
-    required: true
+    required: true,
   },
   status: {
     type: String,
-    enum: ["Pending", "PickedUp", "Assigned", "InTransit", "Delivered", "Cancelled"],
-    default: "Pending"
+    enum: ["Pending", "PickedUp", "InTransit", "Delivered", "Failed"],
+    default: "Pending",
+  },
+  isAssigned: {
+    type: Boolean,
+    default: false,
   },
   cancelReason: {
     type: String,
-    default: ""
+    default: "",
   },
   assignedAgentId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
-    default: null
+    default: null,
   },
   trackingCoordinates: [
     {
       lat: {
         type: Number,
-        required: true
+        required: true,
       },
       lng: {
         type: Number,
-        required: true
+        required: true,
       },
       timestamp: {
         type: Date,
-        default: Date.now
-      }
-    }
+        default: Date.now,
+      },
+    },
   ],
   createdAt: {
     type: Date,
-    default: Date.now
+    default: Date.now,
   },
   updatedAt: {
     type: Date,
-    default: Date.now
-  }
+    default: Date.now,
+  },
 });
 
 // Auto update updatedAt before saving

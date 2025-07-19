@@ -21,13 +21,13 @@ exports.cancelParcelByIdService = async (parcelId, reason, userId = null) => {
     throw error;
   }
 
-  if (parcel.status === "Cancelled") {
+  if (parcel.status === "Failed") {
     const error = new Error("Parcel is already cancelled");
     error.statusCode = 400;
     throw error;
   }
 
-  parcel.status = "Cancelled";
+  parcel.status = "Failed";
   parcel.cancelReason = reason;
   await parcel.save();
 
