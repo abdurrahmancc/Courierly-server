@@ -17,7 +17,7 @@ const port = process.env.PORT || 5000;
 app.use(
   cors({
     origin: [
-      "http://localhost:3000"
+      "http://localhost:3000","https://courierly.web.app","https://courierly.firebaseapp.com"
     ],
     credentials: true,
     exposedHeaders: ["Set-Cookie", "Date", "ETag"],
