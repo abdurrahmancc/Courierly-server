@@ -13,9 +13,9 @@ const {
   updateParcelLocation,
   cancelParcel,
   getNewParcels,
-  assignMultipleAgents,
+  multipleAssignParcel,
   getDeliveredParcelsByStatus,
-} = require("../../controller/parcelController");
+} = require("../../controllers/parcelController");
 const { requireRole, verifyJWT } = require("../../middleWares/common/checkLogin");
 
 
@@ -34,10 +34,10 @@ router.get("/getDeliveredParcelsByStatus/:status", verifyJWT, requireRole(["deli
 
 /*  Admin Routes */
 router.get("/", verifyJWT, requireRole(["admin"]), getAllParcels);
-router.get("/getNewParcel", verifyJWT, requireRole(["admin"]), getNewParcels);
+router.get("/getNewParcels", verifyJWT, requireRole(["admin"]), getNewParcels);
 router.patch("/:id/assign", verifyJWT, requireRole(["admin"]), assignAgent);
 router.delete("/:id", verifyJWT, requireRole(["admin"]), deleteParcel);
-router.post("/multipleAssignParcel", verifyJWT, requireRole(["admin"]), assignMultipleAgents);
+router.post("/multipleAssignParcel", verifyJWT, requireRole(["admin"]), multipleAssignParcel);
 
 
 /* Shared Routes */

@@ -15,7 +15,7 @@ const {
   getLoginUser,
   updateUser,
   getDeliveryAgents,
-} = require("../../controller/usersController");
+} = require("../../controllers/usersController");
 const { verifyJWT, requireRole } = require("../../middleWares/common/checkLogin");
 const { addUserValidationHandler } = require("../../middleWares/users/userValidators");
 

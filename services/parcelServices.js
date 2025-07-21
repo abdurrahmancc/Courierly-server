@@ -1,5 +1,62 @@
 const Parcel = require("../models/Parcel");
+const parcelDao = require("../daos/parcelDao");
+const notificationDao = require("../daos/notificationDao");
+const Notification = require("../models/Notification");
+const Agent = require("../models/Agent");
+const mongoose = require("mongoose");
+const User = require("../models/User");
 
+exports.createParcelService = async (parcelData, userId) => {
+  const {
+    pickupAddress,
+    deliveryAddress,
+    parcelType,
+    parcelSize,
+    isCOD,
+    amount,
+    receiverName,
+    receiverPhone,
+  } = parcelData;
+
+  if (
+    !pickupAddress ||
+    !deliveryAddress ||
+    !parcelType ||
+    !parcelSize ||
+    !receiverName ||
+    !receiverPhone
+  ) {
+    throw new Error("Please fill all required fields.");
+  }
+
+  if (isCOD && (!amount || amount <= 0)) {
+    throw new Error("Amount must be greater than 0 for COD parcels.");
+  }
+
+  const newParcel = await parcelDao.createParcel({
+    userId,
+    pickupAddress,
+    deliveryAddress,
+    parcelType,
+    parcelSize,
+    isCOD,
+    amount: isCOD ? amount : 0,
+    receiverName,
+    receiverPhone,
+    status: "Pending",
+  });
+
+  await notificationDao.createNotification({
+    title: "New Parcel Booking",
+    description: `A new parcel was booked by a customer.`,
+    type: "new_parcel",
+    receiverRole: "admin",
+    sendToAll: true,
+    targetId: newParcel._id,
+  });
+
+  return newParcel;
+};
 
 exports.cancelParcelByIdService = async (parcelId, reason, userId = null) => {
   if (!reason || reason.trim() === "") {
@@ -32,4 +89,65 @@ exports.cancelParcelByIdService = async (parcelId, reason, userId = null) => {
   await parcel.save();
 
   return parcel;
+};
+
+exports.updateParcelStatusService = async (parcelId, status, currentUserId) => {
+  const parcel = await Parcel.findById(parcelId);
+  if (!parcel) {
+    throw { status: 404, message: "Parcel not found" };
+  }
+
+  if (parcel.assignedAgentId?.toString() !== currentUserId.toString()) {
+    throw { status: 403, message: "You are not assigned to this parcel" };
+  }
+
+  parcel.status = status;
+  await parcel.save();
+
+  await Notification.create({
+    userId: parcel.userId,
+    title: "Parcel Status Updated",
+    description: `Your parcel status is now ${status}.`,
+    type: "parcel_status_updated",
+    parcelId: parcelId,
+  });
+
+  return parcel;
+};
+
+exports.multipleAssignParcelService = async (parcelIds, agentId) => {
+  if (
+    !Array.isArray(parcelIds) ||
+    parcelIds.some((id) => !mongoose.Types.ObjectId.isValid(id)) ||
+    !mongoose.Types.ObjectId.isValid(agentId)
+  ) {
+    throw { status: 400, message: "Invalid parcel IDs or agent ID" };
+  }
+
+  const agent = await User.findOne({ _id: agentId, role: "deliveryAgent" });
+  if (!agent) {
+    throw { status: 400, message: "Invalid delivery agent" };
+  }
+
+  const result = await Parcel.updateMany(
+    { _id: { $in: parcelIds } },
+    { $set: { assignedAgentId: agentId, isAssigned: true } }
+  );
+
+  await Agent.updateOne(
+    { user: agentId },
+    { $addToSet: { currentParcels: { $each: parcelIds } } }
+  );
+
+  for (const parcelId of parcelIds) {
+    await Notification.create({
+      userId: agentId,
+      title: "New Parcel Assignment",
+      description: `You have been assigned to parcel`,
+      type: "new_parcel",
+      parcelId: parcelId,
+    });
+  }
+
+  return result;
 };

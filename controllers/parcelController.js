@@ -7,68 +7,37 @@ const User = require("../models/User");
 // Create a new parcel booking (Customer)
 exports.createParcel = async (req, res) => {
   try {
-    const userId = req.user.userId; // from verifyJWT middleware
-    const {
-      pickupAddress,
-      deliveryAddress,
-      parcelType,
-      parcelSize,
-      isCOD,
-      amount,
-      receiverName,
-      receiverPhone,
-    } = req.body;
+    const userId = req.user.userId;
+    const parcel = await parcelService.createParcelService(req.body, userId);
 
-    // Basic validation (can be expanded)
-    if (
-      !pickupAddress ||
-      !deliveryAddress ||
-      !parcelType ||
-      !parcelSize ||
-      !receiverName ||
-      !receiverPhone
-    ) {
-      return res
-        .status(400)
-        .json({ message: "Please fill all required fields" });
-    }
-
-    if (isCOD && (!amount || amount <= 0)) {
-      return res
-        .status(400)
-        .json({ message: "Amount must be greater than 0 for COD parcels" });
-    }
-
-    const parcel = new Parcel({
-      userId,
-      pickupAddress,
-      deliveryAddress,
-      parcelType,
-      parcelSize,
-      isCOD,
-      amount: isCOD ? amount : 0,
-      receiverName,
-      receiverPhone,
-      status: "Pending",
+    const io = req.app.get("socketio");
+    io.to("admins").emit("new_notification", {
+      title: "New Parcel Booking",
+      description: "A new parcel has been booked.",
+      targetId: parcel._id,
+      type: "new_parcel",
     });
 
-    await parcel.save();
-    res
-      .status(201)
-      .json({ success: true, message: "Parcel booking created", parcel });
+    res.status(201).json({
+      success: true,
+      message: "Parcel booking created successfully",
+      parcel,
+    });
   } catch (error) {
-    console.error("Error creating parcel:", error);
-    res.status(500).json({ message: "Server error" });
+    console.error("Error in createParcel:", error.message);
+    res.status(400).json({
+      success: false,
+      message: error.message || "Failed to create parcel",
+    });
   }
 };
 
 // Get all parcels (Admin)
 exports.getAllParcels = async (req, res) => {
   try {
-    const parcels = await Parcel.find().populate(
-      "userId assignedAgentId",
-      "name email role"
-    ).sort("-createdAt");
+    const parcels = await Parcel.find()
+      .populate("userId assignedAgentId", "name email role")
+      .sort("-createdAt");
     res.json(parcels);
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -79,7 +48,7 @@ exports.getAllParcels = async (req, res) => {
 exports.getDeliveredParcelsByStatus = async (req, res) => {
   try {
     const status = req.params.status;
-    const parcels = await Parcel.find({status}).sort("-createdAt");
+    const parcels = await Parcel.find({ status }).sort("-createdAt");
     res.json(parcels);
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -133,7 +102,7 @@ exports.getParcelById = async (req, res) => {
     }
     const parcel = await Parcel.findById(parcelId).populate(
       "userId assignedAgentId",
-      "name email role"
+      "displayName email phoneNumber role "
     );
     if (!parcel) {
       return res.status(404).json({ message: "Parcel not found" });
@@ -145,33 +114,27 @@ exports.getParcelById = async (req, res) => {
   }
 };
 
-// Update parcel status (Delivery Agent)
 exports.updateParcelStatus = async (req, res) => {
   try {
     const parcelId = req.params.id;
     const { status } = req.body;
+    const currentUserId = req.user.userId;
 
     if (!["PickedUp", "InTransit", "Delivered"].includes(status)) {
       return res.status(400).json({ message: "Invalid status value" });
     }
 
-    const parcel = await Parcel.findById(parcelId);
-    if (!parcel) {
-      return res.status(404).json({ message: "Parcel not found" });
-    }
+    const parcel = await parcelService.updateParcelStatusService(
+      parcelId,
+      status,
+      currentUserId
+    );
 
-    // Optional: check if current user is assigned agent
-    if (parcel.assignedAgentId?.toString() !== req.user.userId.toString()) {
-      return res
-        .status(403)
-        .json({ message: "You are not assigned to this parcel" });
-    }
-
-    parcel.status = status;
-    await parcel.save();
     res.json({ success: true, message: "Parcel status updated", parcel });
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    res.status(error.status || 500).json({
+      message: error.message || "Server error",
+    });
   }
 };
 
@@ -209,37 +172,14 @@ exports.assignAgent = async (req, res) => {
 };
 
 // Assign delivery agent to multiple parcels (Admin)
-exports.assignMultipleAgents = async (req, res) => {
+exports.multipleAssignParcel = async (req, res) => {
   try {
     const { parcelIds, agentId } = req.body;
-    if (
-      !Array.isArray(parcelIds) ||
-      parcelIds.some((id) => !mongoose.Types.ObjectId.isValid(id)) ||
-      !mongoose.Types.ObjectId.isValid(agentId)
-    ) {
-      return res
-        .status(400)
-        .json({ message: "Invalid parcel IDs or agent ID" });
-    }
 
-    // Check if agent is valid
-    const agent = await User.findOne({ _id: agentId, role: "deliveryAgent" });
-
-    if (!agent) {
-      return res.status(400).json({ message: "Invalid delivery agent" });
-    }
-
-    // Assign agent to each parcel
-   const result = await Parcel.updateMany(
-      { _id: { $in: parcelIds } },
-      { $set: { assignedAgentId: agentId, isAssigned: true } }
+    const result = await parcelService.multipleAssignParcelService(
+      parcelIds,
+      agentId
     );
-
-    await Agent.updateOne(
-      { user: agentId },
-      { $addToSet: { currentParcels: { $each: parcelIds } } }
-    );
-    
 
     res.json({
       success: true,
@@ -248,7 +188,9 @@ exports.assignMultipleAgents = async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: "Server error" });
+    res.status(error.status || 500).json({
+      message: error.message || "Server error",
+    });
   }
 };
 
@@ -332,8 +274,6 @@ exports.updateParcelLocation = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
-
-
 
 exports.cancelParcel = async (req, res) => {
   try {
