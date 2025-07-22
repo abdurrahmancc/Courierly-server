@@ -45,11 +45,11 @@ exports.createParcelService = async (parcelData, userId) => {
     receiverPhone,
     status: "Pending",
     trackingLogs: {
-            customStatus: "Order Processing",
-            message: `Order received`,
-            location: "",
-            timestamp: new Date(),
-          },
+      customStatus: "Order Processing",
+      message: `Order received`,
+      location: "",
+      timestamp: new Date(),
+    },
   });
 
   await notificationDao.createNotification({
@@ -60,8 +60,6 @@ exports.createParcelService = async (parcelData, userId) => {
     sendToAll: true,
     targetId: newParcel._id,
   });
-
-  
 
   return newParcel;
 };
@@ -114,7 +112,14 @@ exports.cancelParcelByIdService = async (parcelId, reason, userId = null) => {
   return parcel;
 };
 
-exports.updateParcelStatusService = async ( parcelId, status, currentUserId,customMessage, currentLocation, customStatus) => {
+exports.updateParcelStatusService = async (
+  parcelId,
+  status,
+  currentUserId,
+  customMessage,
+  currentLocation,
+  customStatus
+) => {
   const parcel = await Parcel.findById(parcelId);
   const beforeStatus = parcel.status;
   if (!parcel) {
@@ -200,7 +205,6 @@ exports.multipleAssignParcelService = async (parcelIds, agentId) => {
   return result;
 };
 
-
 exports.getMyParcelsService = async (userId) => {
   return await Parcel.find({ userId })
     .populate("assignedAgentId", "name email")
@@ -221,7 +225,7 @@ exports.getParcelByIdService = async (parcelId) => {
     throw error;
   }
 
-exports.parcel = await Parcel.findById(parcelId).populate(
+  const parcel = await Parcel.findById(parcelId).populate(
     "userId assignedAgentId",
     "displayName email phoneNumber role"
   );
