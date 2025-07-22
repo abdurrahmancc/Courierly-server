@@ -83,6 +83,26 @@ const ParcelSchema = new mongoose.Schema({
       },
     },
   ],
+  trackingLogs: [
+    {
+      customStatus: {
+        type: String,
+        default: "",
+      },
+      message: {
+        type: String,
+        default: "",
+      },
+      location: {
+        type: String,
+        default: "",
+      },
+      timestamp: {
+        type: Date,
+        default: Date.now,
+      },
+    },
+  ],
   createdAt: {
     type: Date,
     default: Date.now,

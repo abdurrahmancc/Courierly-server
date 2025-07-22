@@ -72,7 +72,7 @@ exports.getMyParcels = async (req, res) => {
     const parcels = await Parcel.find({ userId }).populate(
       "assignedAgentId",
       "name email"
-    );
+    ).sort("-updatedAt");
     res.json(parcels);
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -117,18 +117,14 @@ exports.getParcelById = async (req, res) => {
 exports.updateParcelStatus = async (req, res) => {
   try {
     const parcelId = req.params.id;
-    const { status } = req.body;
+    const { status,location , message , customStatus  } = req.body;
     const currentUserId = req.user.userId;
 
-    if (!["PickedUp", "InTransit", "Delivered"].includes(status)) {
+    if (!["Pending","PickedUp", "InTransit", "Delivered"].includes(status)) {
       return res.status(400).json({ message: "Invalid status value" });
     }
 
-    const parcel = await parcelService.updateParcelStatusService(
-      parcelId,
-      status,
-      currentUserId
-    );
+    const parcel = await parcelService.updateParcelStatusService( parcelId, status, currentUserId,message, location, customStatus);
 
     res.json({ success: true, message: "Parcel status updated", parcel });
   } catch (error) {

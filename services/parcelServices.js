@@ -44,6 +44,12 @@ exports.createParcelService = async (parcelData, userId) => {
     receiverName,
     receiverPhone,
     status: "Pending",
+    trackingLogs: {
+            customStatus: "Order Processing",
+            message: `Order received`,
+            location: "",
+            timestamp: new Date(),
+          },
   });
 
   await notificationDao.createNotification({
@@ -54,6 +60,8 @@ exports.createParcelService = async (parcelData, userId) => {
     sendToAll: true,
     targetId: newParcel._id,
   });
+
+  
 
   return newParcel;
 };
@@ -91,8 +99,9 @@ exports.cancelParcelByIdService = async (parcelId, reason, userId = null) => {
   return parcel;
 };
 
-exports.updateParcelStatusService = async (parcelId, status, currentUserId) => {
+exports.updateParcelStatusService = async ( parcelId, status, currentUserId,customMessage, currentLocation, customStatus) => {
   const parcel = await Parcel.findById(parcelId);
+  const beforeStatus = parcel.status;
   if (!parcel) {
     throw { status: 404, message: "Parcel not found" };
   }
@@ -102,15 +111,25 @@ exports.updateParcelStatusService = async (parcelId, status, currentUserId) => {
   }
 
   parcel.status = status;
-  await parcel.save();
 
-  await Notification.create({
-    userId: parcel.userId,
-    title: "Parcel Status Updated",
-    description: `Your parcel status is now ${status}.`,
-    type: "parcel_status_updated",
-    parcelId: parcelId,
+  // Tracking log add
+  parcel.trackingLogs.push({
+    customStatus: customStatus,
+    message: customMessage,
+    location: currentLocation,
+    timestamp: new Date(),
   });
+
+  await parcel.save();
+  if (beforeStatus != status) {
+    await Notification.create({
+      userId: parcel.userId,
+      title: "Parcel Status Updated",
+      description: `Your parcel status is now ${status}.`,
+      type: "parcel_status_updated",
+      targetId: parcelId,
+    });
+  }
 
   return parcel;
 };
@@ -145,8 +164,22 @@ exports.multipleAssignParcelService = async (parcelIds, agentId) => {
       title: "New Parcel Assignment",
       description: `You have been assigned to parcel`,
       type: "new_parcel",
-      parcelId: parcelId,
+      targetId: parcelId,
     });
+
+    await Parcel.updateOne(
+      { _id: parcelId },
+      {
+        $push: {
+          trackingLogs: {
+            customStatus: "Assigned to Delivery Agent",
+            message: `Assigned to ${agent.displayName || "agent"}`,
+            location: "",
+            timestamp: new Date(),
+          },
+        },
+      }
+    );
   }
 
   return result;
