@@ -237,41 +237,6 @@ exports.getParcelByIdService = async (parcelId) => {
   return parcel;
 };
 
-exports.updateParcelStatusService = async (
-  parcelId,
-  status,
-  currentUserId,
-  message,
-  location,
-  customStatus
-) => {
-  if (!["Pending", "PickedUp", "InTransit", "Delivered"].includes(status)) {
-    const error = new Error("Invalid status value");
-    error.status = 400;
-    throw error;
-  }
-
-  const parcel = await Parcel.findById(parcelId);
-  if (!parcel) {
-    const error = new Error("Parcel not found");
-    error.status = 404;
-    throw error;
-  }
-
-  // Update status and add log entry
-  parcel.status = status;
-  parcel.trackingLogs.push({
-    status,
-    message,
-    location,
-    customStatus,
-    timestamp: new Date(),
-    updatedBy: currentUserId,
-  });
-  await parcel.save();
-
-  return parcel;
-};
 
 exports.assignAgentService = async (parcelId, agentId) => {
   if (
