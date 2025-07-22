@@ -13,57 +13,43 @@ const userService = require("../services/userService");
 const Agent = require("../models/Agent");
 const mongoose = require("mongoose");
 
-// get all users (admin/moderator access)
-const getUsers = async ( req, res, next) => {
+const getUsers = async (req, res, next) => {
   try {
-    const users = await User.find();
+    const users = await userService.getAllUsersService();
     res.send({ users });
-  } catch (error) {
-    next(error);
+  } catch (err) {
+    next(err);
   }
 };
 
-// get all users (admin/moderator access)
 const getUserByEmail = async (req, res, next) => {
   try {
-    const user = await User.findOne({ email: req.params.email });
+    const user = await userService.getUserByEmailService(req.params.email);
     res.send({ user });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// get Delivery Agents (admin/moderator access)
-const getDeliveryAgents = async (req, res, next) => {
-  try {
-    const agents = await userService.getDeliveryAgentsService();
-    res.status(200).json({ agents });
-  } catch (error) {
-    next(error);
+  } catch (err) {
+    next(err);
   }
 };
 
 const getLoginUser = async (req, res, next) => {
   try {
-    const getUser = getUserFromToken(req);
-    const user = await User.findOne({ email: getUser.email });
+    const userToken = getUserFromToken(req);
+    const user = await userService.getLoginUserService(userToken.email);
     res.send({ user });
-  } catch (error) {
-    next(error);
+  } catch (err) {
+    next(err);
   }
 };
 
-// get all admins only
 const getAllAdmins = async (req, res, next) => {
   try {
-    const admins = await User.find({ role: "admin" });
+    const admins = await userService.getAllAdminsService();
     res.send({ users: admins });
-  } catch (error) {
+  } catch (err) {
     next(createError(401, "Unauthorized Access"));
   }
 };
 
-// add a new user
 const addUser = async (req, res, next) => {
   try {
     const loginDevices = parser(req.headers["user-agent"]);
@@ -75,15 +61,14 @@ const addUser = async (req, res, next) => {
 
     const userData = {
       ...req.body,
+      password: hashedPassword,
       IPAddress: req.ip,
       loginDevices,
       avatar: req.files?.length ? req.files[0].filename : undefined,
     };
 
-    const newUser = new User(userData);
-    await newUser.save();
+    const newUser = await userService.addUserService(userData);
 
-    // Create JWT token with minimal user info
     const tokenPayload = {
       displayName: newUser.displayName,
       phoneNumber: newUser.phoneNumber,
@@ -106,50 +91,31 @@ const addUser = async (req, res, next) => {
       message: "User was added successfully!",
     });
   } catch (err) {
-    console.error(err);
     res.status(500).send({
       errors: { common: { msg: err.message || "Server Error" } },
     });
   }
 };
 
-// change user role by admin
 const makeRole = async (req, res, next) => {
-  const session = await mongoose.startSession();
   try {
-    session.startTransaction();
-
     const { id } = req.params;
     const { role } = req.body;
-    const options = { new: true, useFindAndModify: false, session };
 
-    const updatedUser = await User.findByIdAndUpdate(id, { role }, options);
-
-    if (!updatedUser) {
-      await session.abortTransaction();
-      return next(createError(404, "User not found"));
+    const result = await userService.makeRoleService(id, role);
+    if (!result.success) {
+      return next(createError(404, "User not found or update failed"));
     }
 
-    if(role == "deliveryAgent"){
-      const newAgent = new Agent({ user: id });
-      await newAgent.save({ session });
-    }
-
-    await session.commitTransaction();
-    res.send({ result: updatedUser, message: "Role updated successfully" });
-  } catch (error) {
-    await session.abortTransaction();
+    res.send({ result: result.updatedUser, message: "Role updated successfully" });
+  } catch (err) {
     next(createError(500, "Server error"));
-  } finally {
-    session.endSession();
   }
 };
 
-
-// delete user and remove avatar file if exists
 const removeUser = async (req, res, next) => {
   try {
-    const user = await User.findByIdAndDelete(req.params.id);
+    const user = await userService.removeUserService(req.params.id);
     if (!user) {
       return res.status(404).send({ message: "User not found" });
     }
@@ -172,80 +138,74 @@ const removeUser = async (req, res, next) => {
   }
 };
 
-// get logged-in user's profile details
 const myProfileDetails = async (req, res, next) => {
   try {
     const email = req.params.email;
-    const user = await User.findOne({ email }).select("-password -_id");
+    const user = await userService.getUserByEmailService(email);
     if (!user) {
       return next(createError(404, "User not found"));
     }
-    res.send(user);
-  } catch (error) {
+    const { password, _id, ...safeData } = user.toObject();
+    res.send(safeData);
+  } catch (err) {
     next(createError(500, "Server error"));
   }
 };
 
-// update user photoURL
 const updateImage = async (req, res, next) => {
   try {
-    const email = req.params.email;
-    const updateData = req.body;
-    await User.findOneAndUpdate({ email }, updateData, { upsert: true });
+    await userService.updateImageService(req.params.email, req.body);
     res.send({ update: true });
-  } catch (error) {
+  } catch (err) {
     next(createError(500, "Server error"));
   }
 };
 
-// update user phone number
 const updateNumber = async (req, res, next) => {
   try {
-    const email = req.params.email;
-    const { phoneNumber } = req.body;
-    await User.findOneAndUpdate({ email }, { phoneNumber }, { upsert: true });
+    await userService.updateNumberService(req.params.email, req.body.phoneNumber);
     res.send({ update: true });
-  } catch (error) {
-    next(createError(500, error.message));
+  } catch (err) {
+    next(createError(500, err.message));
   }
 };
 
-// update user displayName
 const updateUserName = async (req, res, next) => {
   try {
-    const email = req.params.email;
-    const updateData = req.body;
-    await User.findOneAndUpdate({ email }, updateData, { upsert: true });
+    await userService.updateUserNameService(req.params.email, req.body);
     res.send({ update: true });
-  } catch (error) {
+  } catch (err) {
     next(createError(500, "Server error"));
   }
 };
 
-// update present address
 const updatePresentAddress = async (req, res, next) => {
   try {
-    const email = req.params.email;
-    const { info } = req.body;
-    await User.findOneAndUpdate({ email }, { presentAddress: info }, { upsert: true });
+    await userService.updatePresentAddressService(req.params.email, req.body.info);
     res.send({ result: true });
-  } catch (error) {
+  } catch (err) {
     next(createError(500, "Server error"));
   }
 };
 
-// update permanent address
 const updatePermanentAddress = async (req, res, next) => {
   try {
-    const email = req.params.email;
-    const { info } = req.body;
-    await User.findOneAndUpdate({ email }, { permanentAddress: info }, { upsert: true });
+    await userService.updatePermanentAddressService(req.params.email, req.body.info);
     res.send({ result: true });
-  } catch (error) {
+  } catch (err) {
     next(createError(500, "Server error"));
   }
 };
 
+// get Delivery Agents (admin/moderator access)
+const getDeliveryAgents = async (req, res, next) => {
+  try {
+    const agents = await userService.getDeliveryAgentsService();
+    res.status(200).json({ agents });
+  } catch (error) {
+    next(error);
+  }
+};
 
 const updateUser = async (req, res, next) => {
   try {

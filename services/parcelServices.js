@@ -66,6 +66,21 @@ exports.createParcelService = async (parcelData, userId) => {
   return newParcel;
 };
 
+exports.getAllParcelsService = async () => {
+  const parcels = await Parcel.find()
+    .populate("userId assignedAgentId", "name email role")
+    .sort("-createdAt");
+  return parcels;
+};
+
+exports.getDeliveredParcelsByStatusService = async (status) => {
+  return await Parcel.find({ status }).sort("-createdAt");
+};
+
+exports.getNewParcelsService = async () => {
+  return await Parcel.find({ isAssigned: false });
+};
+
 exports.cancelParcelByIdService = async (parcelId, reason, userId = null) => {
   if (!reason || reason.trim() === "") {
     throw new Error("Cancel reason is required");
@@ -183,4 +198,172 @@ exports.multipleAssignParcelService = async (parcelIds, agentId) => {
   }
 
   return result;
+};
+
+
+exports.getMyParcelsService = async (userId) => {
+  return await Parcel.find({ userId })
+    .populate("assignedAgentId", "name email")
+    .sort("-updatedAt");
+};
+
+exports.getAssignedParcelsService = async (agentId) => {
+  return await Parcel.find({ assignedAgentId: agentId }).populate(
+    "userId",
+    "name email"
+  );
+};
+
+exports.getParcelByIdService = async (parcelId) => {
+  if (!mongoose.Types.ObjectId.isValid(parcelId)) {
+    const error = new Error("Invalid parcel ID");
+    error.status = 400;
+    throw error;
+  }
+
+exports.parcel = await Parcel.findById(parcelId).populate(
+    "userId assignedAgentId",
+    "displayName email phoneNumber role"
+  );
+  if (!parcel) {
+    const error = new Error("Parcel not found");
+    error.status = 404;
+    throw error;
+  }
+  return parcel;
+};
+
+exports.updateParcelStatusService = async (
+  parcelId,
+  status,
+  currentUserId,
+  message,
+  location,
+  customStatus
+) => {
+  if (!["Pending", "PickedUp", "InTransit", "Delivered"].includes(status)) {
+    const error = new Error("Invalid status value");
+    error.status = 400;
+    throw error;
+  }
+
+  const parcel = await Parcel.findById(parcelId);
+  if (!parcel) {
+    const error = new Error("Parcel not found");
+    error.status = 404;
+    throw error;
+  }
+
+  // Update status and add log entry
+  parcel.status = status;
+  parcel.trackingLogs.push({
+    status,
+    message,
+    location,
+    customStatus,
+    timestamp: new Date(),
+    updatedBy: currentUserId,
+  });
+  await parcel.save();
+
+  return parcel;
+};
+
+exports.assignAgentService = async (parcelId, agentId) => {
+  if (
+    !mongoose.Types.ObjectId.isValid(parcelId) ||
+    !mongoose.Types.ObjectId.isValid(agentId)
+  ) {
+    const error = new Error("Invalid parcel or agent ID");
+    error.status = 400;
+    throw error;
+  }
+
+  const parcel = await Parcel.findById(parcelId);
+  if (!parcel) {
+    const error = new Error("Parcel not found");
+    error.status = 404;
+    throw error;
+  }
+
+  const agent = await User.findOne({ _id: agentId, role: "deliveryAgent" });
+  if (!agent) {
+    const error = new Error("Invalid delivery agent");
+    error.status = 400;
+    throw error;
+  }
+
+  parcel.assignedAgentId = agentId;
+  await parcel.save();
+
+  return parcel;
+};
+
+exports.deleteParcelService = async (parcelId) => {
+  if (!mongoose.Types.ObjectId.isValid(parcelId)) {
+    const error = new Error("Invalid parcel ID");
+    error.status = 400;
+    throw error;
+  }
+
+  const parcel = await Parcel.findByIdAndDelete(parcelId);
+  if (!parcel) {
+    const error = new Error("Parcel not found");
+    error.status = 404;
+    throw error;
+  }
+
+  return true;
+};
+
+exports.trackParcelService = async (parcelId) => {
+  if (!mongoose.Types.ObjectId.isValid(parcelId)) {
+    const error = new Error("Invalid parcel ID");
+    error.status = 400;
+    throw error;
+  }
+
+  const parcel = await Parcel.findById(parcelId, "trackingCoordinates status");
+  if (!parcel) {
+    const error = new Error("Parcel not found");
+    error.status = 404;
+    throw error;
+  }
+
+  return {
+    status: parcel.status,
+    trackingCoordinates: parcel.trackingCoordinates,
+  };
+};
+
+exports.updateParcelLocationService = async (parcelId, lat, lng, userId) => {
+  if (!mongoose.Types.ObjectId.isValid(parcelId)) {
+    const error = new Error("Invalid parcel ID");
+    error.status = 400;
+    throw error;
+  }
+
+  if (lat === undefined || lng === undefined) {
+    const error = new Error("Latitude and longitude required");
+    error.status = 400;
+    throw error;
+  }
+
+  const parcel = await Parcel.findById(parcelId);
+  if (!parcel) {
+    const error = new Error("Parcel not found");
+    error.status = 404;
+    throw error;
+  }
+
+  if (parcel.assignedAgentId?.toString() !== userId.toString()) {
+    const error = new Error("You are not assigned to this parcel");
+    error.status = 403;
+    throw error;
+  }
+
+  parcel.trackingCoordinates.push({ lat, lng });
+  await parcel.save();
+
+  return parcel.trackingCoordinates;
 };

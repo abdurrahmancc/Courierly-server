@@ -21,7 +21,6 @@ const getAgentsService = async () => {
   return agents;
 }
 
-
 const updateAgentProfileService = async (userId, updateData) => {
   const agent = await Agent.findOneAndUpdate({ user: userId }, updateData, {
     new: true,
@@ -32,9 +31,48 @@ const updateAgentProfileService = async (userId, updateData) => {
   return agent;
 }
 
+const updateAgentLocationService = async (req) => {
+  const { agentId, lat, lng } = req.body;
+
+  if (!agentId || lat === undefined || lng === undefined) {
+    const error = new Error("agentId, lat and lng are required");
+    error.status = 400;
+    throw error;
+  }
+
+  const updatedAgent = await Agent.findByIdAndUpdate(
+    agentId,
+    {
+      "currentLocation.lat": lat,
+      "currentLocation.lng": lng,
+      "currentLocation.updatedAt": new Date(),
+    },
+    { new: true }
+  );
+
+  if (!updatedAgent) {
+    const error = new Error("Agent not found");
+    error.status = 404;
+    throw error;
+  }
+
+  const io = req.app.get("socketio");
+  io.emit("agentLocationUpdate", {
+    agentId,
+    lat,
+    lng,
+    updatedAt: new Date(),
+  });
+
+  return updatedAgent;
+};
+
+
+
 module.exports = {
   getAgentProfileService,
   updateAgentProfileService,
   getAgentsService,
-  getAgentService
+  getAgentService,
+  updateAgentLocationService
 };

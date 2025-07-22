@@ -44,41 +44,14 @@ const updateAgentProfile = async(req, res, next) => {
 
 const updateAgentLocation = async (req, res, next) => {
   try {
-    const { agentId, lat, lng } = req.body;
-
-    if (!agentId || lat === undefined || lng === undefined) {
-      return res.status(400).json({ message: "agentId, lat and lng are required" });
-    }
-
-    const updatedAgent = await Agent.findByIdAndUpdate(
-      agentId,
-      {
-        "currentLocation.lat": lat,
-        "currentLocation.lng": lng,
-        "currentLocation.updatedAt": new Date(),
-      },
-      { new: true }
-    );
-
-    if (!updatedAgent) {
-      return res.status(404).json({ message: "Agent not found" });
-    }
-
-
-    const io = req.app.get("socketio");
-    io.emit("agentLocationUpdate", {
-      agentId,
-      lat,
-      lng,
-      updatedAt: new Date(),
-    });
+    const updatedAgent = await agentService.updateAgentLocationService(req);
 
     return res.status(200).json({
       message: "Agent location updated successfully",
       data: updatedAgent,
     });
   } catch (err) {
-    next(err);
+    res.status(err.status || 500).json({ message: err.message });
   }
 };
 

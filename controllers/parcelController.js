@@ -34,10 +34,8 @@ exports.createParcel = async (req, res) => {
 
 // Get all parcels (Admin)
 exports.getAllParcels = async (req, res) => {
-  try {
-    const parcels = await Parcel.find()
-      .populate("userId assignedAgentId", "name email role")
-      .sort("-createdAt");
+ try {
+    const parcels = await parcelService.getAllParcelsService();
     res.json(parcels);
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -46,9 +44,9 @@ exports.getAllParcels = async (req, res) => {
 
 // Get all parcels By Status (delivaryAgent, Admin)
 exports.getDeliveredParcelsByStatus = async (req, res) => {
-  try {
+try {
     const status = req.params.status;
-    const parcels = await Parcel.find({ status }).sort("-createdAt");
+    const parcels = await parcelService.getDeliveredParcelsByStatusService(status);
     res.json(parcels);
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -57,117 +55,79 @@ exports.getDeliveredParcelsByStatus = async (req, res) => {
 
 // Get new parcels (Admin)
 exports.getNewParcels = async (req, res) => {
-  try {
-    const parcels = await Parcel.find({ isAssigned: false });
+ try {
+    const parcels = await parcelService.getNewParcelsService();
     res.json(parcels);
   } catch (error) {
     res.status(500).json({ message: "Server error" });
   }
 };
 
-// Get parcels for logged-in customer
 exports.getMyParcels = async (req, res) => {
   try {
     const userId = req.user.userId;
-    const parcels = await Parcel.find({ userId }).populate(
-      "assignedAgentId",
-      "name email"
-    ).sort("-updatedAt");
+    const parcels = await parcelService.getMyParcelsService(userId);
     res.json(parcels);
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    res.status(error.status || 500).json({ message: error.message || "Server error" });
   }
 };
 
-// Get parcels assigned to delivery agent
 exports.getAssignedParcels = async (req, res) => {
   try {
     const agentId = req.user.userId;
-    const parcels = await Parcel.find({ assignedAgentId: agentId }).populate(
-      "userId",
-      "name email"
-    );
+    const parcels = await parcelService.getAssignedParcelsService(agentId);
     res.json(parcels);
   } catch (error) {
     res.status(500).json({ message: "Server error" });
   }
 };
 
-// Get single parcel by ID (any authorized user)
 exports.getParcelById = async (req, res) => {
   try {
     const parcelId = req.params.id;
-    if (!mongoose.Types.ObjectId.isValid(parcelId)) {
-      return res.status(400).json({ message: "Invalid parcel ID" });
-    }
-    const parcel = await Parcel.findById(parcelId).populate(
-      "userId assignedAgentId",
-      "displayName email phoneNumber role "
-    );
-    if (!parcel) {
-      return res.status(404).json({ message: "Parcel not found" });
-    }
-    // Optional: Add authorization logic to ensure user can view this parcel
+    const parcel = await parcelService.getParcelByIdService(parcelId);
     res.json(parcel);
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    res.status(error.status || 500).json({ message: error.message || "Server error" });
   }
 };
 
 exports.updateParcelStatus = async (req, res) => {
   try {
     const parcelId = req.params.id;
-    const { status,location , message , customStatus  } = req.body;
+    const { status, location, message, customStatus } = req.body;
     const currentUserId = req.user.userId;
 
-    if (!["Pending","PickedUp", "InTransit", "Delivered"].includes(status)) {
-      return res.status(400).json({ message: "Invalid status value" });
-    }
-
-    const parcel = await parcelService.updateParcelStatusService( parcelId, status, currentUserId,message, location, customStatus);
+    const parcel = await parcelService.updateParcelStatusService(
+      parcelId,
+      status,
+      currentUserId,
+      message,
+      location,
+      customStatus
+    );
 
     res.json({ success: true, message: "Parcel status updated", parcel });
   } catch (error) {
-    res.status(error.status || 500).json({
-      message: error.message || "Server error",
-    });
+    res.status(error.status || 500).json({ message: error.message || "Server error" });
   }
 };
 
-// Assign delivery agent to parcel (Admin)
 exports.assignAgent = async (req, res) => {
   try {
     const parcelId = req.params.id;
     const { agentId } = req.body;
 
-    if (
-      !mongoose.Types.ObjectId.isValid(parcelId) ||
-      !mongoose.Types.ObjectId.isValid(agentId)
-    ) {
-      return res.status(400).json({ message: "Invalid parcel or agent ID" });
-    }
+    const parcel = await parcelService.assignAgentService(parcelId, agentId);
 
-    const parcel = await Parcel.findById(parcelId);
-    if (!parcel) {
-      return res.status(404).json({ message: "Parcel not found" });
-    }
-
-    // Validate agent role (optional, you need User model)
-    const User = require("../models/User");
-    const agent = await User.findOne({ _id: agentId, role: "deliveryAgent" });
-    if (!agent) {
-      return res.status(400).json({ message: "Invalid delivery agent" });
-    }
-
-    parcel.assignedAgentId = agentId;
-    await parcel.save();
     res.json({ message: "Agent assigned successfully", parcel });
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    res.status(error.status || 500).json({ message: error.message || "Server error" });
   }
 };
 
-// Assign delivery agent to multiple parcels (Admin)
+
 exports.multipleAssignParcel = async (req, res) => {
   try {
     const { parcelIds, agentId } = req.body;
@@ -190,84 +150,40 @@ exports.multipleAssignParcel = async (req, res) => {
   }
 };
 
-// Delete parcel (Admin)
 exports.deleteParcel = async (req, res) => {
   try {
     const parcelId = req.params.id;
-    if (!mongoose.Types.ObjectId.isValid(parcelId)) {
-      return res.status(400).json({ message: "Invalid parcel ID" });
-    }
-
-    const parcel = await Parcel.findByIdAndDelete(parcelId);
-    if (!parcel) {
-      return res.status(404).json({ message: "Parcel not found" });
-    }
-
+    await parcelService.deleteParcelService(parcelId);
     res.json({ message: "Parcel deleted successfully" });
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    res.status(error.status || 500).json({ message: error.message || "Server error" });
   }
 };
 
-// Get parcel tracking info (Customer)
 exports.trackParcel = async (req, res) => {
   try {
     const parcelId = req.params.id;
-    if (!mongoose.Types.ObjectId.isValid(parcelId)) {
-      return res.status(400).json({ message: "Invalid parcel ID" });
-    }
-    const parcel = await Parcel.findById(
-      parcelId,
-      "trackingCoordinates status"
-    );
-    if (!parcel) {
-      return res.status(404).json({ message: "Parcel not found" });
-    }
-    res.json({
-      status: parcel.status,
-      trackingCoordinates: parcel.trackingCoordinates,
-    });
+    const trackingInfo = await parcelService.trackParcelService(parcelId);
+    res.json(trackingInfo);
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    res.status(error.status || 500).json({ message: error.message || "Server error" });
   }
 };
 
-// Update parcel location (Delivery Agent)
 exports.updateParcelLocation = async (req, res) => {
   try {
     const parcelId = req.params.id;
     const { lat, lng } = req.body;
+    const userId = req.user.userId;
 
-    if (!lat || !lng) {
-      return res
-        .status(400)
-        .json({ message: "Latitude and longitude required" });
-    }
-
-    if (!mongoose.Types.ObjectId.isValid(parcelId)) {
-      return res.status(400).json({ message: "Invalid parcel ID" });
-    }
-
-    const parcel = await Parcel.findById(parcelId);
-    if (!parcel) {
-      return res.status(404).json({ message: "Parcel not found" });
-    }
-
-    if (parcel.assignedAgentId?.toString() !== req.user._id.toString()) {
-      return res
-        .status(403)
-        .json({ message: "You are not assigned to this parcel" });
-    }
-
-    parcel.trackingCoordinates.push({ lat, lng });
-    await parcel.save();
+    const updatedCoordinates = await parcelService.updateParcelLocationService(parcelId, lat, lng, userId);
 
     res.json({
       message: "Location updated",
-      trackingCoordinates: parcel.trackingCoordinates,
+      trackingCoordinates: updatedCoordinates,
     });
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    res.status(error.status || 500).json({ message: error.message || "Server error" });
   }
 };
 
